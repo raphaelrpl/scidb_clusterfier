@@ -1,0 +1,52 @@
+{
+  "name": "template",
+  "master": "0",
+  "config": {
+    "result-prefetch-queue-size": 4,
+    "result-prefetch-threads": 4,
+    "pg-port": 5432,
+    "base-port": 1239,
+    "redundancy": 0,
+    "no-watchdog": false
+  },
+  "servers": [
+    {
+      "id": 0,
+      "host": "192.168.0.1",
+      "user": "scidb",
+      "workers": [
+        {
+          "host_dir": "/disks/d1/0"
+        },
+        {
+          "host_dir": "/disks/d2/1"
+        },
+        {
+          "host_dir": "/disks/d1/2"
+        },
+        {
+          "host_dir": "/disks/d3/3"
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "host": "192.168.0.2",
+      "user": "scidb",
+      "workers": [
+        {
+          "host_dir": "/disks/d1/0"
+        },
+        {
+          "host_dir": "/disks/d2/1"
+        },
+        {
+          "host_dir": "/disks/d1/2"
+        },
+        {
+          "host_dir": "/disks/d3/3"
+        }
+      ]
+    }
+  ]
+}
