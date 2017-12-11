@@ -19,12 +19,10 @@
 #  along with scidb_cluster toolkit. See LICENSE. If not, write to
 #  e-sensing team at <esensing-team@dpi.inpe.br>.
 #
-import sys
 import json
-
-
-def usage(app_name):
-    print("usage: {} config.file.json start|stop|status".format(app_name))
+import argparse
+import subprocess
+from io import BytesIO as StringIO
 
 
 def validate_config(config):
@@ -34,29 +32,80 @@ def validate_config(config):
 
 
 def create_scidb_config(config, server_id):
-    for server in config["servers"]:
-        if server["id"] == server_id:
-            print("[{}]".format(server["host"]))
+    """
+    Args:
+        config (dict): JSON configuration
+        server_id (int): Current Server Identifier
+    """
+    output = StringIO()
+    output.write("[{0}]\n".format(config["name"]))
+
+    server = config["servers"][server_id]
+
+    for serv in config["servers"]:
+        workers_size = len(serv["workers"])
+        output.write("server-{0}={1},{2}\n".format(serv["id"], serv["host"], workers_size))
+
+    for (key, value) in config["config"].iteritems():
+        output.write("{0}={0}\n".format(key, value))
+    
+    output.write("# server-{0}\n".format(server_id))
+    
+    workers_size = len(server["workers"])
+    for worker_id in xrange(workers_size):
+        worker = server["workers"][worker_id]
+        output.write("data-dir-prefix-{0}-{1}={2}/{3}.{0}.{1}\n".format(server_id,
+                                                                        worker_id,
+                                                                        worker["host_dir"],
+                                                                        config["name"]))
+
+    print(output.getvalue())
+
+    output.close()
 
 
 def test_ssh(config):
-    # TODO
-    return True
+    pass
+    # for server in config["servers"]:
+    #     address = "{user}@{host}".format(**{"user": server["user"], "host": server["host"]})
+    #     ssh = subprocess.Popen(['ssh', address],
+    #                            stdin=subprocess.PIPE,
+    #                            stdout=subprocess.PIPE,
+    #                            universal_newlines=True,
+    #                            bufsize=0)
+    #
+    #     out, err = ssh.communicate()
+    #
+    #     if err:
+    #         raise StandardError(err)
+    #
+    #     print(out)
+
+    #### Using external library - install (paramiko) (import paramiko)
+    # for server in config["servers"]:
+    #     client = paramiko.SSHClient()
+    #     client.load_system_host_keys()
+    #     client.set_missing_host_key_policy(paramiko.WarningPolicy)
+    #     client.connect(server["host"], username=server["user"])
+    #     stdin, stdout, stderr = client.exec_command("uptime")
+    #     print stdout.read()
+
 
 def test_docker(config):
     # TODO
     return True
 
-def main():
-    if len(sys.argv) < 3:
-        usage(sys.argv[0])
-        raise ValueError('invalid number of arguments')
 
-    file_name = sys.argv[1]
-    operation = sys.argv[2]
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("filename", help="JSON file containing SciDB configuration")
+    parser.add_argument("operation", help="Operation")
+    args = parser.parse_args()
+
+    file_name = args.filename
+    operation = args.operation
 
     if operation not in ("start", "stop", "status"):
-        usage(sys.argv[0])
         raise ValueError('invalid operation: {}'.format(operation))
 
     config = json.load(open(file_name))
