@@ -23,6 +23,71 @@ import json
 import argparse
 import subprocess
 from io import BytesIO as StringIO
+from stream import NonBlockingStreamReader
+
+
+class SSH(object):
+    user = None
+    host = None
+    _stream = None
+    _stdout = None
+
+    def __init__(self, host, user):
+        self.host = host
+        self.user = user
+        self._stream = None
+
+    def _uri(self):
+        return "{0}@{1}".format(self.user, self.host)
+
+    def _read(self):
+        data = ""
+
+        while True:
+            output = self._stdout.read_line(0.3)
+
+            if not output:
+                break
+
+            data += output
+        return data
+
+    def open(self):
+        uri = self._uri()
+
+        self._stream = subprocess.Popen(['ssh', '-T', uri],
+                                        stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE,
+                                        universal_newlines=True)
+
+        self._stdout = NonBlockingStreamReader(self._stream.stdout)
+
+        if self._stream.stdin.closed:
+            raise StandardError("No connection. Input and Output stream is closed")
+
+        # Reading connection output
+        self._read()
+
+    def is_open(self):
+        return self._stream.poll() is None
+
+    def execute(self, command):
+        if command is None or not isinstance(command, basestring):
+            raise StandardError("Invalid command")
+
+        if not self.is_open():
+            raise StandardError("No connection alive")
+
+        self._stream.stdin.write("{0}\n".format(command))
+
+        a = self._read()
+        print a
+
+    def close(self):
+        if self.is_open():
+            self._stream.terminate()
+            self._stream = None
 
 
 def validate_config(config):
@@ -65,30 +130,11 @@ def create_scidb_config(config, server_id):
 
 
 def test_ssh(config):
-    pass
-    # for server in config["servers"]:
-    #     address = "{user}@{host}".format(**{"user": server["user"], "host": server["host"]})
-    #     ssh = subprocess.Popen(['ssh', address],
-    #                            stdin=subprocess.PIPE,
-    #                            stdout=subprocess.PIPE,
-    #                            universal_newlines=True,
-    #                            bufsize=0)
-    #
-    #     out, err = ssh.communicate()
-    #
-    #     if err:
-    #         raise StandardError(err)
-    #
-    #     print(out)
-
-    #### Using external library - install (paramiko) (import paramiko)
-    # for server in config["servers"]:
-    #     client = paramiko.SSHClient()
-    #     client.load_system_host_keys()
-    #     client.set_missing_host_key_policy(paramiko.WarningPolicy)
-    #     client.connect(server["host"], username=server["user"])
-    #     stdin, stdout, stderr = client.exec_command("uptime")
-    #     print stdout.read()
+    for server in config["servers"]:
+        ssh = SSH(server["host"], server["user"])
+        ssh.open()
+        ssh.execute("uptime")
+        ssh.close()
 
 
 def test_docker(config):
