@@ -5,8 +5,7 @@ from threading import Thread
 class NonBlockingStreamReader(object):
     def __init__(self, stream):
         """
-        stream: the stream to read from.
-                Usually a process' stdout or stderr.
+        :param stream: the stream to read from. Usually a process' stdout or stderr.
         """
 
         self._s = stream
@@ -14,7 +13,10 @@ class NonBlockingStreamReader(object):
 
         def _handle_enqueued_data(stream, queue):
             """
-            Collect lines from 'stream' and put them in 'queue'.
+            Collect lines output from 'stream' and put them in 'queue'.
+
+            :param stream: IO Stream to read of
+            :param queue: Python Queue object (Synchronized)
             """
 
             while True:
