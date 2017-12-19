@@ -22,6 +22,7 @@
 import json
 import argparse
 import subprocess
+from os import path
 from io import BytesIO as StringIO
 from stream import NonBlockingStreamReader
 
@@ -29,15 +30,22 @@ from stream import NonBlockingStreamReader
 class SSH(object):
     user = None
     host = None
-    _stream = None
-    _stdout = None
 
     def __init__(self, host, user):
+        """
+        Initializes SSH Object
+        :param host: Host address
+        :param user: User to connect
+        """
         self.host = host
         self.user = user
         self._stream = None
+        self._stdout = None
 
     def _uri(self):
+        """
+        Utility function to retrieve SSH connection string
+        """
         return "{0}@{1}".format(self.user, self.host)
 
     def _read(self):
@@ -124,9 +132,19 @@ def create_scidb_config(config, server_id):
                                                                         worker["host_dir"],
                                                                         config["name"]))
 
-    print(output.getvalue())
+    data = output.getvalue()
 
     output.close()
+
+    ssh = SSH(server["host"], server["user"])
+
+    ssh.open()
+
+    for worker in server["workers"]:
+        absolute_file_path = path.join(worker["host_dir"], "{0}.ini".format(config["name"]))
+        ssh.execute("echo \"{0}\" > {1}".format(data, absolute_file_path))
+
+    ssh.close()
 
 
 def test_ssh(config):
