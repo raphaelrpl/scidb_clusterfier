@@ -22,9 +22,13 @@
 import json
 import argparse
 import subprocess
+import sys
 from os import path
 from io import BytesIO as StringIO
-from stream import NonBlockingStreamReader
+from utils import NonBlockingStreamReader, \
+                  is_array, \
+                  is_string_present_in, \
+                  is_int_present_in
 
 
 class SSH(object):
@@ -41,6 +45,7 @@ class SSH(object):
         self.user = user
         self._stream = None
         self._stdout = None
+        self._stderr = None
 
     def _uri(self):
         """
@@ -55,7 +60,12 @@ class SSH(object):
             output = self._stdout.read_line(0.3)
 
             if not output:
-                break
+                err = self._stderr.read_line(0.3)
+                if not err:
+                    break
+
+                data += err
+                continue
 
             data += output
         return data
@@ -70,6 +80,7 @@ class SSH(object):
                                         universal_newlines=True)
 
         self._stdout = NonBlockingStreamReader(self._stream.stdout)
+        self._stderr = NonBlockingStreamReader(self._stream.stderr)
 
         if self._stream.stdin.closed:
             raise StandardError("No connection. Input and Output stream is closed")
@@ -78,7 +89,7 @@ class SSH(object):
         self._read()
 
     def is_open(self):
-        return self._stream.poll() is None
+        return self._stream and self._stream.poll() is None
 
     def execute(self, command):
         if command is None or not isinstance(command, basestring):
@@ -95,13 +106,35 @@ class SSH(object):
     def close(self):
         if self.is_open():
             self._stream.terminate()
+            self._stdout.close()
+            self._stderr.close()
             self._stream = None
 
 
 def validate_config(config):
     # TODO validate config file
-    if "name" not in config:
-        raise ValueError('you must set a name to scidb cluster')
+    if not is_string_present_in("name", config):
+        raise KeyError('You must set a name to SciDB cluster')
+
+    if "servers" not in config:
+        raise KeyError('Key "servers" is not present in config file.')
+
+    servers = config.get("servers")
+
+    if not is_array(servers):
+        raise ValueError('Key "servers" must be an array')
+
+    for server in servers:
+        if not is_int_present_in("id", server):
+            raise ValueError('You must set a int "id" in server')
+
+        if not is_string_present_in("host", server):
+            raise ValueError('You must set "host" in server')
+
+        if not is_string_present_in("user", server):
+            raise ValueError('You must set "user" in server')
+
+        # TODO: Validate Workers
 
 
 def create_scidb_config(config, server_id):
@@ -143,6 +176,7 @@ def create_scidb_config(config, server_id):
     for worker in server["workers"]:
         absolute_file_path = path.join(worker["host_dir"], "{0}.ini".format(config["name"]))
         ssh.execute("echo \"{0}\" > {1}".format(data, absolute_file_path))
+        break
 
     ssh.close()
 
@@ -152,33 +186,52 @@ def test_ssh(config):
         ssh = SSH(server["host"], server["user"])
         ssh.open()
         ssh.execute("uptime")
+        ssh.execute("free")
         ssh.close()
 
 
-def test_docker(config):
-    # TODO
-    return True
+def start(config):
+    for server in config["servers"]:
+        create_scidb_config(config, server["id"])
+
+
+def execute_remote(server, command):
+    ssh = SSH(server["host"], server["user"])
+    ssh.open()
+    ssh.execute(command)
+    ssh.close()
+
+
+def stop(config):
+    for server in config["servers"]:
+        execute_remote(server, "scidb.py stopall {0}".format(config.get("name")))
+
+
+def status(config):
+    for server in config["servers"]:
+        # "scidb.py status {0}".format(config.get("name"))
+        execute_remote(server, "scidb.py init_syscat")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("filename", help="JSON file containing SciDB configuration")
-    parser.add_argument("operation", help="Operation")
+    parser.add_argument("operation", help="Operation", choices=["start", "stop", "status"])
     args = parser.parse_args()
 
     file_name = args.filename
     operation = args.operation
 
-    if operation not in ("start", "stop", "status"):
-        raise ValueError('invalid operation: {}'.format(operation))
-
     config = json.load(open(file_name))
-
     validate_config(config)
     test_ssh(config)
 
-    for server in config["servers"]:
-        create_scidb_config(config, server["id"])
+    if operation == "start":
+        start(config)
+    elif operation == "stop":
+        stop(config)
+    else:
+        status(config)
 
 
 if __name__ == "__main__":
